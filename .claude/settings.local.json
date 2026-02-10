@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C D:/Projects/AI-Threat-Actor-Tracking-system ls-tree:*)",
+      "Bash(npm install)",
+      "Bash(npx tsc:*)",
+      "Bash(npm run build:*)",
+      "Bash(findstr:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}
