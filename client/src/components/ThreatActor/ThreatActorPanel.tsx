@@ -250,7 +250,14 @@ const ThreatActorPanel: React.FC = () => {
             {/* Header */}
             <div className="flex justify-between items-start mb-8">
               <div className="flex-1">
-                <h1 className="text-3xl font-bold text-white mb-3">{selectedActor.name}</h1>
+                <div className="flex items-center gap-3 mb-3">
+                  <h1 className="text-3xl font-bold text-white">{selectedActor.name}</h1>
+                  {selectedActor.first_seen && (
+                    <span className="text-xs px-2.5 py-1 bg-yellow-900/30 text-yellow-500 border border-yellow-900/50 rounded-full font-semibold whitespace-nowrap">
+                      First Seen: {selectedActor.first_seen}
+                    </span>
+                  )}
+                </div>
                 <div className="flex flex-wrap gap-2 text-sm items-center">
                   <span className="text-slate-400">AKA:</span>
                   {selectedActor.aliases.map(alias => (

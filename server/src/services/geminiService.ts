@@ -1,11 +1,107 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { ThreatActor, NewsItem } from '../types.js';
 import { TRUSTED_THREAT_DATA } from '../data/trustedData.js';
+import { getMitreActorInfo } from './mitreService.js';
+import { isKnownStableUrl, validateUrls } from './urlValidation.js';
 import * as db from '../models/db.js';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
+// ============================================================
+// Helper: Extract grounding metadata URLs from Gemini response
+// ============================================================
+function extractGroundingUrls(response: any): { title: string; url: string }[] {
+  const groundedUrls: { title: string; url: string }[] = [];
+  try {
+    const candidate = response.candidates?.[0];
+    if (candidate?.groundingMetadata?.groundingChunks) {
+      for (const chunk of candidate.groundingMetadata.groundingChunks) {
+        if (chunk.web?.uri && chunk.web?.title) {
+          groundedUrls.push({
+            title: chunk.web.title,
+            url: chunk.web.uri,
+          });
+        }
+      }
+    }
+  } catch {
+    // Grounding metadata extraction is best-effort
+  }
+  return groundedUrls;
+}
+
+// ============================================================
+// Helper: Merge aliases from multiple sources (deduped)
+// ============================================================
+function mergeAliases(
+  aiAliases: string[],
+  trustedAliases: string[],
+  mitreAliases: string[],
+  primaryName: string
+): string[] {
+  const allAliases = new Set<string>([
+    ...aiAliases,
+    ...trustedAliases,
+    ...mitreAliases,
+  ]);
+
+  // Remove the actor's primary name from aliases to avoid duplication
+  const normalizedPrimary = primaryName.toLowerCase();
+  return Array.from(allAliases).filter(
+    a => a.toLowerCase() !== normalizedPrimary && a.trim().length > 0
+  );
+}
+
+// ============================================================
+// Helper: Assemble verified sources from multiple inputs
+// ============================================================
+function assembleVerifiedSources(
+  groundedUrls: { title: string; url: string }[],
+  aiSources: { title: string; url: string }[],
+  trustedSources: { title: string; url: string }[],
+  mitreUrl: string | null,
+  actorName: string
+): { title: string; url: string }[] {
+  const seenUrls = new Set<string>();
+  const result: { title: string; url: string }[] = [];
+
+  const addSource = (source: { title: string; url: string }) => {
+    const normalized = source.url.replace(/\/$/, '');
+    if (!seenUrls.has(normalized)) {
+      seenUrls.add(normalized);
+      result.push(source);
+    }
+  };
+
+  // 1. Trusted sources first (highest priority)
+  for (const src of trustedSources) {
+    addSource(src);
+  }
+
+  // 2. MITRE ATT&CK page
+  if (mitreUrl) {
+    addSource({ title: `MITRE ATT&CK - ${actorName}`, url: mitreUrl });
+  }
+
+  // 3. Grounded URLs from Gemini's search (real URLs it actually visited)
+  for (const src of groundedUrls) {
+    addSource(src);
+  }
+
+  // 4. AI-generated sources, but ONLY if they match known-stable patterns
+  for (const src of aiSources) {
+    if (isKnownStableUrl(src.url)) {
+      addSource(src);
+    }
+  }
+
+  return result;
+}
+
+
+// ============================================================
 // 1. Generate New Threat Actor Profile
+// ============================================================
 export const generateActorProfile = async (
   actorName: string,
   trustedUrls: string[],
@@ -29,6 +125,10 @@ export const generateActorProfile = async (
     type: Type.OBJECT,
     properties: {
       name: { type: Type.STRING },
+      first_seen: {
+        type: Type.STRING,
+        description: "Year first observed. Format: 'YYYY' or 'at least YYYY'. Cross-reference MITRE ATT&CK, Mandiant, and CrowdStrike."
+      },
       aliases: { type: Type.ARRAY, items: { type: Type.STRING } },
       description: {
         type: Type.OBJECT,
@@ -64,7 +164,7 @@ export const generateActorProfile = async (
         }
       }
     },
-    required: ["name", "aliases", "description", "cves", "sources"]
+    required: ["name", "first_seen", "aliases", "description", "cves", "sources"]
   };
 
   let prompt = `Conduct a forensic cybersecurity audit on the threat actor: "${actorName}".`;
@@ -111,7 +211,8 @@ export const generateActorProfile = async (
   1.  **TIMELINE ACCURACY (FIRST SEEN)**:
       - Explicitly search for "earliest activity" or "first observed" dates for "${actorName}".
       - Cross-reference Mandiant, CrowdStrike, and Microsoft reports.
-      - **CRITICAL**: The first sentence of the 'summary' MUST state the "First Observed" year/date. If ambiguous, state the earliest range (e.g., "Active since at least 2013").
+      - **CRITICAL**: The 'first_seen' field MUST contain the year of first observation (e.g., "2008" or "at least 2013").
+      - The first sentence of the 'summary' MUST also state the "First Observed" year/date.
 
   2.  **ALIASES (EXHAUSTIVE MAPPING)**:
       - Perform a deep search for aliases across ALL major naming schemes:
@@ -137,6 +238,7 @@ export const generateActorProfile = async (
       - Do NOT guess specific PDF URLs.
 
   DATA STRUCTURE:
+  - **first_seen**: Year of first observation (e.g., "2008").
   - **Summary**: Origin, **First Observed Date**, Motivation, Target Sectors.
   - **Campaigns**: Named campaigns, Tools.
   - **Recent**: Activity in the last 12-24 months.
@@ -161,12 +263,21 @@ export const generateActorProfile = async (
     const text = response.text;
     if (!text) throw new Error("No response from AI");
 
+    // Extract grounding metadata (real URLs Gemini's search tool found)
+    const groundedUrls = extractGroundingUrls(response);
+    console.log(`Extracted ${groundedUrls.length} grounded URLs from Gemini search`);
+
     const parsedData = JSON.parse(text);
 
-    // *** DETERMINISTIC VALIDATION LOGIC ***
+    // ============================================================
+    // POST-GENERATION VALIDATION PIPELINE
+    // ============================================================
+
+    // --- Step 1: Trusted CSV data overrides ---
     if (trustedCsvData) {
       console.log(`Applying trusted CSV validation for ${actorName}`);
 
+      // Override CVEs with trusted data
       parsedData.cves = trustedCsvData.cves.map(trustedCve => {
         const aiFound = parsedData.cves.find((aiCve: any) => aiCve.id === trustedCve.id);
         return {
@@ -177,10 +288,19 @@ export const generateActorProfile = async (
         };
       });
 
-      if (trustedCsvData.sources) {
-        const existingUrls = new Set(parsedData.sources.map((s: any) => s.url));
-        const newSources = trustedCsvData.sources.filter(s => !existingUrls.has(s.url));
-        parsedData.sources = [...newSources, ...parsedData.sources];
+      // Override first_seen from ground truth
+      if (trustedCsvData.first_seen) {
+        parsedData.first_seen = trustedCsvData.first_seen;
+      }
+
+      // Merge aliases: AI + ground truth
+      if (trustedCsvData.aliases) {
+        parsedData.aliases = mergeAliases(
+          parsedData.aliases || [],
+          trustedCsvData.aliases,
+          [],
+          parsedData.name
+        );
       }
     } else if (hasTrustedContext) {
       const existingUrls = new Set(parsedData.sources.map((s: any) => s.url));
@@ -191,6 +311,89 @@ export const generateActorProfile = async (
       });
     }
 
+    // --- Step 2: MITRE ATT&CK enrichment ---
+    try {
+      const mitreInfo = await getMitreActorInfo(actorName);
+
+      if (mitreInfo) {
+        console.log(`MITRE ATT&CK data found: ${mitreInfo.aliases.length} aliases, URL: ${mitreInfo.mitreUrl}`);
+
+        // Merge MITRE aliases
+        parsedData.aliases = mergeAliases(
+          parsedData.aliases || [],
+          trustedCsvData?.aliases || [],
+          mitreInfo.aliases,
+          parsedData.name
+        );
+
+        // Use MITRE first_seen if no ground truth override
+        if (!trustedCsvData?.first_seen && mitreInfo.firstSeen) {
+          parsedData.first_seen = mitreInfo.firstSeen;
+        }
+
+        // Assemble verified sources
+        parsedData.sources = assembleVerifiedSources(
+          groundedUrls,
+          parsedData.sources || [],
+          trustedCsvData?.sources || [],
+          mitreInfo.mitreUrl,
+          parsedData.name
+        );
+      } else {
+        console.log(`No MITRE ATT&CK data found for "${actorName}"`);
+
+        // Still replace AI sources with grounded URLs if available
+        if (groundedUrls.length > 0) {
+          parsedData.sources = assembleVerifiedSources(
+            groundedUrls,
+            parsedData.sources || [],
+            trustedCsvData?.sources || [],
+            null,
+            parsedData.name
+          );
+        } else if (trustedCsvData?.sources) {
+          const existingUrls = new Set(parsedData.sources.map((s: any) => s.url));
+          const newSources = trustedCsvData.sources.filter(s => !existingUrls.has(s.url));
+          parsedData.sources = [...newSources, ...parsedData.sources];
+        }
+      }
+    } catch (mitreError) {
+      console.error('MITRE enrichment failed (non-fatal):', mitreError);
+      // Fall back to grounded URLs + trusted sources only
+      if (groundedUrls.length > 0) {
+        parsedData.sources = assembleVerifiedSources(
+          groundedUrls,
+          parsedData.sources || [],
+          trustedCsvData?.sources || [],
+          null,
+          parsedData.name
+        );
+      }
+    }
+
+    // --- Step 3: URL validation (remove dead links) ---
+    try {
+      const validatedSources = await validateUrls(parsedData.sources || []);
+      parsedData.sources = validatedSources;
+    } catch (validationError) {
+      console.error('URL validation failed (non-fatal):', validationError);
+      // Keep sources as-is if validation fails
+    }
+
+    // --- Step 4: Ensure minimum sources ---
+    if (!parsedData.sources || parsedData.sources.length < 2) {
+      parsedData.sources = parsedData.sources || [];
+      parsedData.sources.push({
+        title: `Search - ${actorName} threat intelligence`,
+        url: `https://www.google.com/search?q=${encodeURIComponent(actorName)}+threat+intelligence`
+      });
+    }
+
+    // Ensure first_seen has a value
+    if (!parsedData.first_seen) {
+      parsedData.first_seen = 'Unknown';
+    }
+
     return parsedData;
   } catch (error) {
     console.error("Error generating profile:", error);
@@ -198,7 +401,9 @@ export const generateActorProfile = async (
   }
 };
 
+// ============================================================
 // 2. Granular Refresh
+// ============================================================
 export const refreshActorSection = async (
   actorName: string,
   section: 'ALIASES' | 'DESCRIPTION' | 'CVES'
@@ -241,6 +446,10 @@ export const refreshActorSection = async (
     schema = {
       type: Type.OBJECT,
       properties: {
+        first_seen: {
+          type: Type.STRING,
+          description: "Year first observed. Format: 'YYYY' or 'at least YYYY'."
+        },
         description: {
           type: Type.OBJECT,
           properties: {
@@ -251,7 +460,7 @@ export const refreshActorSection = async (
           required: ["summary", "campaigns", "recent"]
         }
       },
-      required: ["description"]
+      required: ["first_seen", "description"]
     };
   } else if (section === 'CVES') {
     prompt += `\nTask: Find ALL CVEs exploited by this actor.
@@ -292,14 +501,81 @@ export const refreshActorSection = async (
       }
     });
 
-    return JSON.parse(response.text || "{}");
+    const parsed = JSON.parse(response.text || "{}");
+
+    // --- Post-processing for ALIASES section ---
+    if (section === 'ALIASES' && parsed.aliases) {
+      // Look up ground truth and MITRE data
+      const cleanInput = actorName.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const trustedCsvKey = Object.keys(TRUSTED_THREAT_DATA).find(k => {
+        const cleanKey = k.toLowerCase().replace(/[^a-z0-9]/g, '');
+        return cleanInput.includes(cleanKey) || cleanKey.includes(cleanInput);
+      });
+      const trustedAliases = trustedCsvKey ? TRUSTED_THREAT_DATA[trustedCsvKey]?.aliases || [] : [];
+
+      try {
+        const mitreInfo = await getMitreActorInfo(actorName);
+        parsed.aliases = mergeAliases(
+          parsed.aliases,
+          trustedAliases,
+          mitreInfo?.aliases || [],
+          actorName
+        );
+      } catch {
+        parsed.aliases = mergeAliases(parsed.aliases, trustedAliases, [], actorName);
+      }
+    }
+
+    // --- Post-processing for DESCRIPTION section ---
+    if (section === 'DESCRIPTION' && parsed.first_seen) {
+      // Override with ground truth if available
+      const cleanInput = actorName.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const trustedCsvKey = Object.keys(TRUSTED_THREAT_DATA).find(k => {
+        const cleanKey = k.toLowerCase().replace(/[^a-z0-9]/g, '');
+        return cleanInput.includes(cleanKey) || cleanKey.includes(cleanInput);
+      });
+      const trustedFirstSeen = trustedCsvKey ? TRUSTED_THREAT_DATA[trustedCsvKey]?.first_seen : null;
+      if (trustedFirstSeen) {
+        parsed.first_seen = trustedFirstSeen;
+      } else {
+        try {
+          const mitreInfo = await getMitreActorInfo(actorName);
+          if (mitreInfo?.firstSeen) {
+            parsed.first_seen = mitreInfo.firstSeen;
+          }
+        } catch {
+          // Keep AI value
+        }
+      }
+    }
+
+    // --- Post-processing for CVES section: use grounding for verification URLs ---
+    if (section === 'CVES' && parsed.cves) {
+      const groundedUrls = extractGroundingUrls(response);
+      if (groundedUrls.length > 0) {
+        // For each CVE, try to find a grounded URL that mentions the CVE ID
+        for (const cve of parsed.cves) {
+          const matchingUrl = groundedUrls.find(g =>
+            g.url.toLowerCase().includes(cve.id.toLowerCase().replace(/-/g, '')) ||
+            g.title.toLowerCase().includes(cve.id.toLowerCase())
+          );
+          if (matchingUrl) {
+            cve.verificationReference = matchingUrl.url;
+          }
+        }
+      }
+    }
+
+    return parsed;
   } catch (error) {
     console.error(`Error refreshing section ${section}:`, error);
     throw error;
   }
 };
 
+// ============================================================
 // 3. Chat Functionality
+// ============================================================
 export const chatWithAI = async (message: string, context?: string): Promise<string> => {
   const model = 'gemini-3-flash-preview';
 
@@ -366,7 +642,9 @@ export const chatWithAI = async (message: string, context?: string): Promise<str
   }
 };
 
+// ============================================================
 // 4. Live News Feed
+// ============================================================
 export const getLiveCyberNews = async (): Promise<NewsItem[]> => {
   const model = 'gemini-3-flash-preview';
 
@@ -408,7 +686,26 @@ export const getLiveCyberNews = async (): Promise<NewsItem[]> => {
     if (!text) return [];
 
     const parsed = JSON.parse(text);
-    return Array.isArray(parsed) ? parsed : [];
+
+    // For news, also try to use grounded URLs
+    if (Array.isArray(parsed)) {
+      const groundedUrls = extractGroundingUrls(response);
+      if (groundedUrls.length > 0) {
+        // Replace news URLs with grounded ones where titles match
+        for (const item of parsed) {
+          const matchingGrounded = groundedUrls.find(g =>
+            g.title.toLowerCase().includes(item.title.substring(0, 20).toLowerCase()) ||
+            item.title.toLowerCase().includes(g.title.substring(0, 20).toLowerCase())
+          );
+          if (matchingGrounded) {
+            item.url = matchingGrounded.url;
+          }
+        }
+      }
+      return parsed;
+    }
+
+    return [];
   } catch (error) {
     console.error("News fetch error:", error);
     return [];

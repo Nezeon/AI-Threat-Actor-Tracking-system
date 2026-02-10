@@ -1,8 +1,21 @@
 import { ThreatActor } from '../types.js';
 
-// Parsed from the provided CSV for strict validation
-export const TRUSTED_THREAT_DATA: Record<string, { cves: { id: string, description?: string, severity?: string, verificationReference: string }[], sources?: { title: string, url: string }[] }> = {
+// Ground truth data for strict validation - overrides AI hallucinations
+export interface TrustedActorData {
+  first_seen?: string;
+  aliases?: string[];
+  cves: { id: string; description?: string; severity?: string; verificationReference: string }[];
+  sources?: { title: string; url: string }[];
+}
+
+export const TRUSTED_THREAT_DATA: Record<string, TrustedActorData> = {
   "apt29": {
+    first_seen: "2008",
+    aliases: [
+      "Cozy Bear", "The Dukes", "CozyDuke", "Nobelium", "Midnight Blizzard",
+      "Yttrium", "Iron Hemlock", "Grizzly Steppe", "UNC2452", "Dark Halo",
+      "StellarParticle", "Blue Kitsune", "ATK7", "ITG11", "TA421", "BlueBravo"
+    ],
     cves: [
       { id: "CVE-2018-13379", verificationReference: "https://socradar.io/apt-profile-cozy-bear-apt29/" },
       { id: "CVE-2019-9670", verificationReference: "https://socradar.io/apt-profile-cozy-bear-apt29/" },
@@ -21,9 +34,18 @@ export const TRUSTED_THREAT_DATA: Record<string, { cves: { id: string, descripti
       { id: "CVE-2023-24955", verificationReference: "https://socradar.io/apt-profile-cozy-bear-apt29/" },
       { id: "CVE-2023-35078", verificationReference: "https://socradar.io/apt-profile-cozy-bear-apt29/" }
     ],
-    sources: [{ title: "SOCRadar - APT29 Profile", url: "https://socradar.io/apt-profile-cozy-bear-apt29/" }]
+    sources: [
+      { title: "MITRE ATT&CK - APT29", url: "https://attack.mitre.org/groups/G0016/" },
+      { title: "Malpedia - APT29", url: "https://malpedia.caad.fkie.fraunhofer.de/actor/apt29" },
+      { title: "SOCRadar - APT29 Profile", url: "https://socradar.io/apt-profile-cozy-bear-apt29/" }
+    ]
   },
   "volt typhoon": {
+    first_seen: "2021",
+    aliases: [
+      "Vanguard Panda", "Bronze Silhouette", "DEV-0391", "Voltzite",
+      "Insidious Taurus", "UNC3236"
+    ],
     cves: [
       { id: "CVE-2023-46805", verificationReference: "https://www.tenable.com/blog/volt-typhoon-u-s-critical-infrastructure-targeted-by-state-sponsored-actors" },
       { id: "CVE-2024-21887", verificationReference: "https://www.tenable.com/blog/volt-typhoon-u-s-critical-infrastructure-targeted-by-state-sponsored-actors" },
@@ -35,11 +57,17 @@ export const TRUSTED_THREAT_DATA: Record<string, { cves: { id: string, descripti
       { id: "CVE-2023-27997", verificationReference: "https://www.tenable.com/blog/volt-typhoon-u-s-critical-infrastructure-targeted-by-state-sponsored-actors" }
     ],
     sources: [
-       { title: "Tenable - Volt Typhoon Analysis", url: "https://www.tenable.com/blog/volt-typhoon-u-s-critical-infrastructure-targeted-by-state-sponsored-actors" },
-       { title: "Versa Networks Bulletin", url: "https://versa-networks.com/blog/versa-security-bulletin-volt-typhoon-exploitation-of-n-day-and-zero-day-vulnerabilities/" }
+      { title: "MITRE ATT&CK - Volt Typhoon", url: "https://attack.mitre.org/groups/G1017/" },
+      { title: "Tenable - Volt Typhoon Analysis", url: "https://www.tenable.com/blog/volt-typhoon-u-s-critical-infrastructure-targeted-by-state-sponsored-actors" },
+      { title: "Versa Networks Bulletin", url: "https://versa-networks.com/blog/versa-security-bulletin-volt-typhoon-exploitation-of-n-day-and-zero-day-vulnerabilities/" }
     ]
   },
   "apt41": {
+    first_seen: "2012",
+    aliases: [
+      "Double Dragon", "Wicked Panda", "Winnti Group", "Barium", "Brass Typhoon",
+      "Earth Baku", "SparklingGoblin", "TG-2633", "RedGolf"
+    ],
     cves: [
       { id: "CVE-2019-19781", verificationReference: "https://cloud.google.com/blog/topics/threat-intelligence/apt41-initiates-global-intrusion-campaign-using-multiple-exploits" },
       { id: "CVE-2021-44207", verificationReference: "https://cloud.google.com/blog/topics/threat-intelligence/apt41-initiates-global-intrusion-campaign-using-multiple-exploits" },
@@ -57,25 +85,72 @@ export const TRUSTED_THREAT_DATA: Record<string, { cves: { id: string, descripti
       { id: "CVE-2017-17562", verificationReference: "https://attack.mitre.org/groups/G0096/" }
     ],
     sources: [
-        { title: "Google Cloud Threat Intel", url: "https://cloud.google.com/blog/topics/threat-intelligence/apt41-initiates-global-intrusion-campaign-using-multiple-exploits" },
-        { title: "MITRE ATT&CK APT41", url: "https://attack.mitre.org/groups/G0096/" }
+      { title: "MITRE ATT&CK - APT41", url: "https://attack.mitre.org/groups/G0096/" },
+      { title: "Google Cloud Threat Intel", url: "https://cloud.google.com/blog/topics/threat-intelligence/apt41-initiates-global-intrusion-campaign-using-multiple-exploits" }
     ]
   },
   "clop": {
-      cves: [
-          { id: "CVE-2021-27101", verificationReference: "https://hivepro.com/threat-advisory/CVE-2025-61882:-Oracle-EBS-Zero-Day-Actively-Exploited-in-the-Wild" },
-          { id: "CVE-2021-27102", verificationReference: "https://hivepro.com/threat-advisory/CVE-2025-61882:-Oracle-EBS-Zero-Day-Actively-Exploited-in-the-Wild" },
-          { id: "CVE-2021-27103", verificationReference: "https://hivepro.com/threat-advisory/CVE-2025-61882:-Oracle-EBS-Zero-Day-Actively-Exploited-in-the-Wild" },
-          { id: "CVE-2021-27104", verificationReference: "https://hivepro.com/threat-advisory/CVE-2025-61882:-Oracle-EBS-Zero-Day-Actively-Exploited-in-the-Wild" },
-          { id: "CVE-2021-35211", verificationReference: "https://hivepro.com/threat-advisory/CVE-2025-61882:-Oracle-EBS-Zero-Day-Actively-Exploited-in-the-Wild" },
-          { id: "CVE-2023-0669", verificationReference: "https://hivepro.com/threat-advisory/CVE-2025-61882:-Oracle-EBS-Zero-Day-Actively-Exploited-in-the-Wild" },
-          { id: "CVE-2023-34362", verificationReference: "https://hivepro.com/threat-advisory/CVE-2025-61882:-Oracle-EBS-Zero-Day-Actively-Exploited-in-the-Wild" },
-          { id: "CVE-2025-61882", verificationReference: "https://tenable.com/blog/cve-2025-61882-cl0p-exploited-oracle-zero-day" }
-      ],
-      sources: [
-          { title: "Tenable - Cl0p Oracle Zero Day", url: "https://tenable.com/blog/cve-2025-61882-cl0p-exploited-oracle-zero-day" },
-          { title: "HivePro Threat Advisory", url: "https://hivepro.com/threat-advisory/CVE-2025-61882:-Oracle-EBS-Zero-Day-Actively-Exploited-in-the-Wild" }
-      ]
+    first_seen: "2019",
+    aliases: [
+      "Cl0p", "TA505", "FIN11", "DEV-0950", "Lace Tempest", "Dungeon Spider",
+      "UNC2546", "FIN11"
+    ],
+    cves: [
+      { id: "CVE-2021-27101", verificationReference: "https://hivepro.com/threat-advisory/CVE-2025-61882:-Oracle-EBS-Zero-Day-Actively-Exploited-in-the-Wild" },
+      { id: "CVE-2021-27102", verificationReference: "https://hivepro.com/threat-advisory/CVE-2025-61882:-Oracle-EBS-Zero-Day-Actively-Exploited-in-the-Wild" },
+      { id: "CVE-2021-27103", verificationReference: "https://hivepro.com/threat-advisory/CVE-2025-61882:-Oracle-EBS-Zero-Day-Actively-Exploited-in-the-Wild" },
+      { id: "CVE-2021-27104", verificationReference: "https://hivepro.com/threat-advisory/CVE-2025-61882:-Oracle-EBS-Zero-Day-Actively-Exploited-in-the-Wild" },
+      { id: "CVE-2021-35211", verificationReference: "https://hivepro.com/threat-advisory/CVE-2025-61882:-Oracle-EBS-Zero-Day-Actively-Exploited-in-the-Wild" },
+      { id: "CVE-2023-0669", verificationReference: "https://hivepro.com/threat-advisory/CVE-2025-61882:-Oracle-EBS-Zero-Day-Actively-Exploited-in-the-Wild" },
+      { id: "CVE-2023-34362", verificationReference: "https://hivepro.com/threat-advisory/CVE-2025-61882:-Oracle-EBS-Zero-Day-Actively-Exploited-in-the-Wild" },
+      { id: "CVE-2025-61882", verificationReference: "https://tenable.com/blog/cve-2025-61882-cl0p-exploited-oracle-zero-day" }
+    ],
+    sources: [
+      { title: "MITRE ATT&CK - TA505", url: "https://attack.mitre.org/groups/G0092/" },
+      { title: "Tenable - Cl0p Oracle Zero Day", url: "https://tenable.com/blog/cve-2025-61882-cl0p-exploited-oracle-zero-day" },
+      { title: "HivePro Threat Advisory", url: "https://hivepro.com/threat-advisory/CVE-2025-61882:-Oracle-EBS-Zero-Day-Actively-Exploited-in-the-Wild" }
+    ]
+  },
+  "lazarus group": {
+    first_seen: "2009",
+    aliases: [
+      "Hidden Cobra", "Guardians of Peace", "Whois Team", "Diamond Sleet", "Zinc",
+      "Labyrinth Chollima", "Nickel Academy", "UNC577", "Bureau 121", "Appleworm",
+      "APT-C-26", "Group 77", "Hastati Group", "NewRomanic Cyber Army Team"
+    ],
+    cves: [],
+    sources: [
+      { title: "MITRE ATT&CK - Lazarus Group", url: "https://attack.mitre.org/groups/G0032/" },
+      { title: "Malpedia - Lazarus Group", url: "https://malpedia.caad.fkie.fraunhofer.de/actor/lazarus_group" },
+      { title: "CISA Alert - Hidden Cobra", url: "https://www.cisa.gov/news-events/cybersecurity-advisories/aa22-108a" }
+    ]
+  },
+  "apt28": {
+    first_seen: "2004",
+    aliases: [
+      "Fancy Bear", "Sofacy", "Sednit", "Pawn Storm", "Forest Blizzard",
+      "Strontium", "Iron Twilight", "Tsar Team", "Threat Group-4127",
+      "TG-4127", "Snakemackerel", "FROZENLAKE", "ITG05", "Blue Athena", "TA422",
+      "Fighting Ursa", "BlueDelta"
+    ],
+    cves: [],
+    sources: [
+      { title: "MITRE ATT&CK - APT28", url: "https://attack.mitre.org/groups/G0007/" },
+      { title: "Malpedia - APT28", url: "https://malpedia.caad.fkie.fraunhofer.de/actor/sofacy" }
+    ]
+  },
+  "sandworm": {
+    first_seen: "2009",
+    aliases: [
+      "Sandworm Team", "Voodoo Bear", "IRIDIUM", "Seashell Blizzard",
+      "Iron Viking", "TeleBots", "ELECTRUM", "Quedagh", "BlackEnergy Group",
+      "UNC1151", "Blue Echidna"
+    ],
+    cves: [],
+    sources: [
+      { title: "MITRE ATT&CK - Sandworm Team", url: "https://attack.mitre.org/groups/G0034/" },
+      { title: "Malpedia - Sandworm", url: "https://malpedia.caad.fkie.fraunhofer.de/actor/sandworm" }
+    ]
   }
 };
 
@@ -83,7 +158,8 @@ export const INITIAL_THREAT_ACTORS: ThreatActor[] = [
   {
     id: '1',
     name: 'APT29 (Cozy Bear)',
-    aliases: ['The Dukes', 'CozyDuke', 'Nobelium', 'Midnight Blizzard', 'Yttrium'],
+    first_seen: '2008',
+    aliases: ['The Dukes', 'CozyDuke', 'Nobelium', 'Midnight Blizzard', 'Yttrium', 'Iron Hemlock', 'Grizzly Steppe', 'UNC2452', 'Dark Halo', 'StellarParticle', 'Blue Kitsune', 'ATK7', 'ITG11', 'TA421', 'BlueBravo'],
     description: {
       summary: 'APT29, widely known as Cozy Bear or Nobelium, is a cyber espionage group attributed to Russia\'s Foreign Intelligence Service (SVR). Active since at least 2008, their primary mission is collecting intelligence in support of Russian foreign policy. They target government networks, think tanks, healthcare, and energy sectors across NATO members and Western nations. They are characterized by extreme stealth, patience, and operational security.',
       campaigns: 'The group is infamous for the SolarWinds supply chain compromise (Sunburst) and attacks on the Democratic National Committee (DNC). They utilize a mix of custom malware (WellMess, GoldFinder) and legitimate tools (PowerShell, WMI) to maintain persistent access. Recent TTPs involve compromising cloud service providers, abusing trust relationships, and "access mining" to resell access or pivot into high-value targets.',
@@ -110,7 +186,8 @@ export const INITIAL_THREAT_ACTORS: ThreatActor[] = [
   {
     id: '2',
     name: 'Lazarus Group',
-    aliases: ['Hidden Cobra', 'Guardians of Peace', 'Whois Team', 'Diamond Sleet', 'Zinc'],
+    first_seen: '2009',
+    aliases: ['Hidden Cobra', 'Guardians of Peace', 'Whois Team', 'Diamond Sleet', 'Zinc', 'Labyrinth Chollima', 'Nickel Academy', 'UNC577', 'Bureau 121', 'Appleworm', 'APT-C-26', 'Group 77'],
     description: {
       summary: 'Lazarus Group is a state-sponsored cyber threat group attributed to the Reconnaissance General Bureau of North Korea. Active since 2009, they possess a unique hybrid motivation of espionage and financial crime (to circumvent sanctions). They are known for high-profile destructive attacks as well as sophisticated bank heists and cryptocurrency theft.',
       campaigns: 'Major operations include the 2014 Sony Pictures hack, the 2016 Bangladesh Bank heist, and the global WannaCry ransomware outbreak in 2017. Their toolset includes the Manuscrypt, NukeSped, and Dtrack malware families. They frequently use social engineering on platforms like LinkedIn to target employees in defense and crypto sectors, delivering trojanized open-source tools.',

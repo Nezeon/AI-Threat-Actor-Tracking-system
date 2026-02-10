@@ -14,6 +14,7 @@ export async function getAllActors(): Promise<ThreatActor[]> {
     result.push({
       id: actor.id,
       name: actor.name,
+      first_seen: actor.first_seen || '',
       aliases: actor.aliases,
       description: {
         summary: actor.description_summary,
@@ -40,6 +41,7 @@ export async function getActorById(id: string): Promise<ThreatActor | null> {
   return {
     id: actor.id,
     name: actor.name,
+    first_seen: actor.first_seen || '',
     aliases: actor.aliases,
     description: {
       summary: actor.description_summary,
@@ -60,9 +62,9 @@ export async function createActor(actor: ThreatActor): Promise<ThreatActor> {
     await client.query('BEGIN');
 
     await client.query(
-      `INSERT INTO threat_actors (id, name, aliases, description_summary, description_campaigns, description_recent, last_updated)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [actor.id, actor.name, JSON.stringify(actor.aliases), actor.description.summary, actor.description.campaigns, actor.description.recent, actor.lastUpdated]
+      `INSERT INTO threat_actors (id, name, first_seen, aliases, description_summary, description_campaigns, description_recent, last_updated)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [actor.id, actor.name, actor.first_seen || '', JSON.stringify(actor.aliases), actor.description.summary, actor.description.campaigns, actor.description.recent, actor.lastUpdated]
     );
 
     for (const cve of actor.cves) {
@@ -99,9 +101,9 @@ export async function updateActor(id: string, actor: ThreatActor): Promise<Threa
     await client.query('BEGIN');
 
     await client.query(
-      `UPDATE threat_actors SET name = $2, aliases = $3, description_summary = $4, description_campaigns = $5, description_recent = $6, last_updated = $7
+      `UPDATE threat_actors SET name = $2, first_seen = $3, aliases = $4, description_summary = $5, description_campaigns = $6, description_recent = $7, last_updated = $8
        WHERE id = $1`,
-      [id, actor.name, JSON.stringify(actor.aliases), actor.description.summary, actor.description.campaigns, actor.description.recent, actor.lastUpdated]
+      [id, actor.name, actor.first_seen || '', JSON.stringify(actor.aliases), actor.description.summary, actor.description.campaigns, actor.description.recent, actor.lastUpdated]
     );
 
     // Replace CVEs

@@ -4,7 +4,8 @@ export const INITIAL_THREAT_ACTORS: ThreatActor[] = [
   {
     id: '1',
     name: 'APT29 (Cozy Bear)',
-    aliases: ['The Dukes', 'CozyDuke', 'Nobelium', 'Midnight Blizzard', 'Yttrium'],
+    first_seen: '2008',
+    aliases: ['The Dukes', 'CozyDuke', 'Nobelium', 'Midnight Blizzard', 'Yttrium', 'Iron Hemlock', 'Grizzly Steppe', 'UNC2452', 'Dark Halo', 'StellarParticle', 'Blue Kitsune', 'ATK7', 'ITG11', 'TA421', 'BlueBravo'],
     description: {
       summary: 'APT29, widely known as Cozy Bear or Nobelium, is a cyber espionage group attributed to Russia\'s Foreign Intelligence Service (SVR). Active since at least 2008, their primary mission is collecting intelligence in support of Russian foreign policy. They target government networks, think tanks, healthcare, and energy sectors across NATO members and Western nations. They are characterized by extreme stealth, patience, and operational security.',
       campaigns: 'The group is infamous for the SolarWinds supply chain compromise (Sunburst) and attacks on the Democratic National Committee (DNC). They utilize a mix of custom malware (WellMess, GoldFinder) and legitimate tools (PowerShell, WMI) to maintain persistent access. Recent TTPs involve compromising cloud service providers, abusing trust relationships, and "access mining" to resell access or pivot into high-value targets.',
@@ -31,7 +32,8 @@ export const INITIAL_THREAT_ACTORS: ThreatActor[] = [
   {
     id: '2',
     name: 'Lazarus Group',
-    aliases: ['Hidden Cobra', 'Guardians of Peace', 'Whois Team', 'Diamond Sleet', 'Zinc'],
+    first_seen: '2009',
+    aliases: ['Hidden Cobra', 'Guardians of Peace', 'Whois Team', 'Diamond Sleet', 'Zinc', 'Labyrinth Chollima', 'Nickel Academy', 'UNC577', 'Bureau 121', 'Appleworm', 'APT-C-26', 'Group 77'],
     description: {
       summary: 'Lazarus Group is a state-sponsored cyber threat group attributed to the Reconnaissance General Bureau of North Korea. Active since 2009, they possess a unique hybrid motivation of espionage and financial crime (to circumvent sanctions). They are known for high-profile destructive attacks as well as sophisticated bank heists and cryptocurrency theft.',
       campaigns: 'Major operations include the 2014 Sony Pictures hack, the 2016 Bangladesh Bank heist, and the global WannaCry ransomware outbreak in 2017. Their toolset includes the Manuscrypt, NukeSped, and Dtrack malware families. They frequently use social engineering on platforms like LinkedIn to target employees in defense and crypto sectors, delivering trojanized open-source tools.',

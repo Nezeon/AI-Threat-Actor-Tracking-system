@@ -6,7 +6,9 @@
       "Bash(npx tsc:*)",
       "Bash(npm run build:*)",
       "Bash(findstr:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git merge:*)"
     ]
   }
 }

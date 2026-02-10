@@ -16,6 +16,7 @@ export interface Source {
 export interface ThreatActor {
   id: string;
   name: string;
+  first_seen: string;
   aliases: string[];
   description: {
     summary: string;

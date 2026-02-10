@@ -14,6 +14,7 @@ const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS threat_actors (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
+  first_seen TEXT NOT NULL DEFAULT '',
   aliases JSONB NOT NULL DEFAULT '[]',
   description_summary TEXT NOT NULL DEFAULT '',
   description_campaigns TEXT NOT NULL DEFAULT '',
@@ -83,6 +84,10 @@ export async function initializeDatabase(): Promise<void> {
 
   // Create schema
   await pool.query(SCHEMA_SQL);
+
+  // Migration: add first_seen column if it doesn't exist (for existing databases)
+  await pool.query(`ALTER TABLE threat_actors ADD COLUMN IF NOT EXISTS first_seen TEXT NOT NULL DEFAULT ''`);
+
   console.log('Database schema initialized');
 
   // Seed initial data if empty
@@ -100,10 +105,10 @@ async function seedInitialData(): Promise<void> {
 
     for (const actor of INITIAL_THREAT_ACTORS) {
       await client.query(
-        `INSERT INTO threat_actors (id, name, aliases, description_summary, description_campaigns, description_recent, last_updated)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `INSERT INTO threat_actors (id, name, first_seen, aliases, description_summary, description_campaigns, description_recent, last_updated)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          ON CONFLICT (id) DO NOTHING`,
-        [actor.id, actor.name, JSON.stringify(actor.aliases), actor.description.summary, actor.description.campaigns, actor.description.recent, actor.lastUpdated]
+        [actor.id, actor.name, actor.first_seen || '', JSON.stringify(actor.aliases), actor.description.summary, actor.description.campaigns, actor.description.recent, actor.lastUpdated]
       );
 
       for (const cve of actor.cves) {
