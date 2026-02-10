@@ -98,7 +98,7 @@ export const generateActorProfile = async (actorName: string): Promise<Omit<Thre
       description: {
         type: Type.OBJECT,
         properties: {
-          summary: { type: Type.STRING, description: "Origin, first observed date, capability, motive, targeting pattern." },
+          summary: { type: Type.STRING, description: "Origin, first observed date (MUST be accurate), capability, motive, targeting pattern." },
           campaigns: { type: Type.STRING, description: "Campaigns, tool sets, TTPs, malwares, collaborations." },
           recent: { type: Type.STRING, description: "Latest campaign, recent operational/behavioral changes." }
         },
@@ -175,33 +175,41 @@ export const generateActorProfile = async (actorName: string): Promise<Omit<Thre
   prompt += `\n\nMISSION: 
   Generate a Threat Profile with EXHAUSTIVE and 100% VERIFIED data.
   
-  STRICT IDENTITY & VALIDATION RULES:
-  1.  **IDENTITY LOCK**: You are analyzing "${actorName}". 
-      - **FIRST SEEN**: You MUST explicitly state the year this actor was FIRST observed in the 'summary'.
-      - **ALIASES (STRICT)**: 
-         - **INCLUDE ONLY**: Official Vendor names (e.g., "Midnight Blizzard", "Cozy Bear"), Industry Designators (e.g., "APT29"), or Common Names.
-         - **EXCLUDE**: 
-            - Tools (e.g., "Cobalt Strike" is a tool, not an alias).
-            - Malware Families (e.g., "Mimikatz").
-            - Parent Organizations (e.g., "SVR" or "PLA" - unless used synonymously).
-            - Campaigns (unless used as the primary actor name).
-      - **LINKS**: Ensure all URLs in 'sources' and 'verificationReference' are VALID, DIRECT deep-links to reports. If a direct link is unstable, use a Google Search query URL.
+  STRICT IDENTITY & ACCURACY RULES:
   
-  2.  **Exhaustive Search**: Search for '"${actorName}" exploited CVEs' and '"${actorName}" first seen'.
-  
-  3.  **Proof Required**: For EVERY single CVE you list, you MUST provide a verification link.
+  1.  **TIMELINE ACCURACY (FIRST SEEN)**: 
+      - Explicitly search for "earliest activity" or "first observed" dates for "${actorName}".
+      - Cross-reference Mandiant, CrowdStrike, and Microsoft reports.
+      - **CRITICAL**: The first sentence of the 'summary' MUST state the "First Observed" year/date. If ambiguous, state the earliest range (e.g., "Active since at least 2013").
 
-  4.  **LINK SAFETY (CRITICAL)**: 
-      - ${hasTrustedContext ? 'Use the Source URL or File Name as the reference.' : 'You MUST generate a Google Search Query URL for the verificationReference IF you cannot find a direct report link.'}
-      - ${hasTrustedContext ? '' : `Format for fallback: "https://www.google.com/search?q=" + '"' + ActorName + '"' + "+exploiting+" + CVE_ID`}
-  
-  5.  **No Proof = No Entry**: If you cannot find a connection between the actor and the CVE, OMIT IT.
+  2.  **ALIASES (EXHAUSTIVE MAPPING)**: 
+      - Perform a deep search for aliases across ALL major naming schemes:
+        * **Microsoft**: (Weather/Elements/Sleets, e.g., "Midnight Blizzard", "Diamond Sleet").
+        * **CrowdStrike**: (Animals, e.g., "Cozy Bear", "Panda").
+        * **Mandiant/FireEye**: (APTxx, UNCxxxx).
+        * **Secureworks**: (Elements, e.g., "Iron Hemlock").
+        * **Proofpoint**: (TAxxx).
+      - List ALL discovered aliases. Do not truncate.
+      - **EXCLUDE**: Tools (e.g., Cobalt Strike) and Parent Orgs (e.g., GRU) unless used as the primary identifier.
+
+  3.  **LINK SAFETY & SOURCES**: 
+      - **NO BROKEN LINKS**: Do NOT generate deep-links to specific blog posts (e.g., "site.com/blog/2021/analysis") unless you are 100% certain they are live.
+      - **PREFERRED SOURCES**: In the 'sources' array, prioritze stable "Profile" pages:
+         - MITRE ATT&CK Group Page.
+         - Malpedia Actor Page.
+         - CISA AA (Alerts).
+         - Vendor "Adversary Universe" or "Threat Library" main pages.
+      - **FALLBACK**: If a stable URL is unavailable, use a high-quality Google Search Query URL (e.g., "https://www.google.com/search?q=${actorName}+threat+intelligence").
+
+  4.  **CVE VERIFICATION**:
+      - For 'verificationReference', if you cannot find a stable, direct advisory URL, use a Google Search Query: "https://www.google.com/search?q=${actorName}+exploiting+${'CVE-ID'}".
+      - Do NOT guess specific PDF URLs.
 
   DATA STRUCTURE:
-  - **Summary**: Origin, First Observed Date, Motivation, Target Sectors.
+  - **Summary**: Origin, **First Observed Date**, Motivation, Target Sectors.
   - **Campaigns**: Named campaigns, Tools.
   - **Recent**: Activity in the last 12-24 months.
-  - **Sources**: General list of high-level sources used.
+  - **Sources**: General list of high-level sources used (MITRE, Malpedia, etc.).
 
   Execute the search now. Verify attribution. Generate the JSON.`;
 
@@ -215,7 +223,7 @@ export const generateActorProfile = async (actorName: string): Promise<Omit<Thre
         responseSchema: schema,
         maxOutputTokens: 8192,
         temperature: 0, // Deterministic output
-        systemInstruction: "You are an elite Threat Intelligence Auditor. You prioritize accuracy over quantity. You strictly adhere to the requested Threat Actor identity. You strictly separate the Actor's Identity from their Tools and Parent Organizations.",
+        systemInstruction: "You are an elite Threat Intelligence Auditor. You prioritize accuracy over quantity. You strictly adhere to the requested Threat Actor identity. You verify all URLs before including them.",
       }
     });
 
@@ -254,10 +262,6 @@ export const generateActorProfile = async (actorName: string): Promise<Omit<Thre
                 parsedData.sources.unshift({ title: 'Approved Platform Source', url: url });
             }
         });
-        userApprovedFiles.forEach(file => {
-             // We can't link to a local file easily in the sources list without a Blob URL which persists,
-             // so we just add it as a textual reference if needed, or rely on the AI putting it in 'verificationReference'
-        });
     }
 
     return parsedData;
@@ -274,13 +278,19 @@ export const refreshActorSection = async (actorName: string, section: 'ALIASES' 
    let schema: Schema = { type: Type.OBJECT, properties: {}, required: [] };
 
    if (section === 'ALIASES') {
-      prompt += `\nTask: Perform a deep search on MITRE, Malpedia, CISA, and Vendor blogs (Microsoft, CrowdStrike, FireEye).
-      List ALL known aliases (Vendor-assigned names).
+      prompt += `\nTask: Perform a deep search on MITRE, Malpedia, CISA, and Vendor blogs (Microsoft, CrowdStrike, FireEye, Secureworks).
+      
+      OBJECTIVE: List ALL known aliases (Vendor-assigned names).
+      
+      MAPPING GUIDE:
+      - Microsoft: Weather/Sleet/Typhoon names (e.g. Midnight Blizzard, Volt Typhoon)
+      - CrowdStrike: Animal names (e.g. Fancy Bear, Wicked Panda)
+      - Mandiant: APTxx, UNCxxxx
+      - Proofpoint: TAxxx
       
       CRITICAL EXCLUSION RULES:
       1. DO NOT include Tools or Malware names (e.g. Cobalt Strike, Mimikatz).
       2. DO NOT include Parent Organizations (e.g. GRU, MSS) unless used as the actor name.
-      3. DO NOT include Campaign names unless they are synonymous with the actor.
       
       Return a simple array of unique strings.`;
       
@@ -293,7 +303,7 @@ export const refreshActorSection = async (actorName: string, section: 'ALIASES' 
       };
    } else if (section === 'DESCRIPTION') {
       prompt += `\nTask: Re-evaluate the threat profile history and tactics.
-      1. Summary: MUST strictly state "First observed in [Year]" at the start. Confirm this date via search.
+      1. Summary: **MANDATORY**: Search for and explicitly state "First observed in [Year]" at the start. Confirm this date via search across multiple vendors.
       2. Campaigns: List major historical campaigns and toolsets.
       3. Recent: Focus on activity within the last 12 months.
       `;
@@ -316,7 +326,7 @@ export const refreshActorSection = async (actorName: string, section: 'ALIASES' 
    } else if (section === 'CVES') {
       prompt += `\nTask: Find ALL CVEs exploited by this actor.
       - Search for recent CISA advisories and vendor reports.
-      - Provide a verification link for each.
+      - **VERIFICATION**: Provide a valid URL. If a direct report link is unstable, construct a Google Search Query URL (e.g., "https://www.google.com/search?q=${actorName}+CVE-xxxx-xxxx").
       `;
       schema = {
          type: Type.OBJECT,
@@ -348,7 +358,7 @@ export const refreshActorSection = async (actorName: string, section: 'ALIASES' 
             responseMimeType: "application/json",
             responseSchema: schema,
             temperature: 0,
-            systemInstruction: "You are a specialized Threat Intel component. Focus only on the requested section. Strictly separate Actor Aliases from Tools and Malware."
+            systemInstruction: "You are a specialized Threat Intel component. Focus only on the requested section. Prioritize accuracy of Dates, Names, and URLs."
          }
       });
       
