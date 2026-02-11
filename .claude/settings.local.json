@@ -7,8 +7,14 @@
       "Bash(npm run build:*)",
       "Bash(findstr:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)",
-      "Bash(git merge:*)"
+      "Bash(winget install:*)",
+      "Bash(powershell -Command \"Start-Process winget -ArgumentList ''install PostgreSQL.PostgreSQL.17 --accept-source-agreements --accept-package-agreements --silent'' -Verb RunAs -Wait\")",
+      "Bash(scoop search:*)",
+      "Bash(psql:*)",
+      "Bash(C:UsersAYUSHMAANscoopappspostgresqlcurrentbinpsql.exe --version)",
+      "Bash(cmd /c:*)",
+      "Bash(powershell -Command \"& 'C:\\\\Users\\\\AYUSHMAAN\\\\scoop\\\\apps\\\\postgresql\\\\current\\\\bin\\\\psql.exe' --version\":*)",
+      "Bash(powershell:*)"
     ]
   }
 }
