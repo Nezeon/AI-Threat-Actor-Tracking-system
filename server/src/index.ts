@@ -61,9 +61,14 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/news', newsRoutes);
 app.use('/api/sources', sourceRoutes);
 
-// Health check
-app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+// Health check — validates DB connection for Render monitoring
+app.get('/api/health', async (_req, res) => {
+  try {
+    await getPool().query('SELECT 1');
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  } catch {
+    res.status(503).json({ status: 'degraded', error: 'Database unavailable', timestamp: new Date().toISOString() });
+  }
 });
 
 // In production: serve client build

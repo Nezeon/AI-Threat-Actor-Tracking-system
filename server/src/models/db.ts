@@ -1,11 +1,10 @@
-import { getPool } from '../config/database.js';
+import { query, getClient } from '../config/database.js';
 import { ThreatActor } from '../types.js';
 
 // --- Threat Actors ---
 
 export async function getAllActors(): Promise<ThreatActor[]> {
-  const pool = getPool();
-  const { rows: actors } = await pool.query('SELECT * FROM threat_actors ORDER BY created_at ASC');
+  const { rows: actors } = await query('SELECT * FROM threat_actors ORDER BY created_at ASC');
 
   const result: ThreatActor[] = [];
   for (const actor of actors) {
@@ -30,8 +29,7 @@ export async function getAllActors(): Promise<ThreatActor[]> {
 }
 
 export async function getActorById(id: string): Promise<ThreatActor | null> {
-  const pool = getPool();
-  const { rows } = await pool.query('SELECT * FROM threat_actors WHERE id = $1', [id]);
+  const { rows } = await query('SELECT * FROM threat_actors WHERE id = $1', [id]);
   if (rows.length === 0) return null;
 
   const actor = rows[0];
@@ -55,8 +53,7 @@ export async function getActorById(id: string): Promise<ThreatActor | null> {
 }
 
 export async function getActorByName(name: string): Promise<ThreatActor | null> {
-  const pool = getPool();
-  const { rows } = await pool.query(
+  const { rows } = await query(
     'SELECT * FROM threat_actors WHERE LOWER(name) = LOWER($1) LIMIT 1',
     [name]
   );
@@ -83,8 +80,7 @@ export async function getActorByName(name: string): Promise<ThreatActor | null> 
 }
 
 export async function createActor(actor: ThreatActor): Promise<ThreatActor> {
-  const pool = getPool();
-  const client = await pool.connect();
+  const client = await getClient();
 
   try {
     await client.query('BEGIN');
@@ -122,8 +118,7 @@ export async function createActor(actor: ThreatActor): Promise<ThreatActor> {
 }
 
 export async function updateActor(id: string, actor: ThreatActor): Promise<ThreatActor> {
-  const pool = getPool();
-  const client = await pool.connect();
+  const client = await getClient();
 
   try {
     await client.query('BEGIN');
@@ -164,13 +159,11 @@ export async function updateActor(id: string, actor: ThreatActor): Promise<Threa
 }
 
 export async function deleteActor(id: string): Promise<void> {
-  const pool = getPool();
-  await pool.query('DELETE FROM threat_actors WHERE id = $1', [id]);
+  await query('DELETE FROM threat_actors WHERE id = $1', [id]);
 }
 
 async function getCvesForActor(actorId: string) {
-  const pool = getPool();
-  const { rows } = await pool.query('SELECT * FROM actor_cves WHERE actor_id = $1', [actorId]);
+  const { rows } = await query('SELECT * FROM actor_cves WHERE actor_id = $1', [actorId]);
   return rows.map(r => ({
     id: r.cve_id,
     description: r.description,
@@ -180,17 +173,15 @@ async function getCvesForActor(actorId: string) {
 }
 
 async function getSourcesForActor(actorId: string) {
-  const pool = getPool();
-  const { rows } = await pool.query('SELECT * FROM actor_sources WHERE actor_id = $1', [actorId]);
+  const { rows } = await query('SELECT * FROM actor_sources WHERE actor_id = $1', [actorId]);
   return rows.map(r => ({ title: r.title, url: r.url }));
 }
 
 // --- Trusted URLs ---
 
 export async function getTrustedUrls(actorName: string) {
-  const pool = getPool();
   const normalized = actorName.toLowerCase().replace(/[^a-z0-9]/g, '');
-  const { rows } = await pool.query(
+  const { rows } = await query(
     `SELECT * FROM trusted_urls WHERE REPLACE(LOWER(actor_name), ' ', '') LIKE $1`,
     [`%${normalized}%`]
   );
@@ -198,8 +189,7 @@ export async function getTrustedUrls(actorName: string) {
 }
 
 export async function addTrustedUrl(actorName: string, url: string) {
-  const pool = getPool();
-  const { rows } = await pool.query(
+  const { rows } = await query(
     `INSERT INTO trusted_urls (actor_name, url) VALUES ($1, $2) RETURNING id`,
     [actorName.toLowerCase(), url]
   );
@@ -207,16 +197,14 @@ export async function addTrustedUrl(actorName: string, url: string) {
 }
 
 export async function removeTrustedUrl(id: number) {
-  const pool = getPool();
-  await pool.query('DELETE FROM trusted_urls WHERE id = $1', [id]);
+  await query('DELETE FROM trusted_urls WHERE id = $1', [id]);
 }
 
 // --- Trusted Files ---
 
 export async function getTrustedFiles(actorName: string) {
-  const pool = getPool();
   const normalized = actorName.toLowerCase().replace(/[^a-z0-9]/g, '');
-  const { rows } = await pool.query(
+  const { rows } = await query(
     `SELECT id, actor_name, file_name, file_type, LENGTH(content) as content_length, created_at FROM trusted_files WHERE REPLACE(LOWER(actor_name), ' ', '') LIKE $1`,
     [`%${normalized}%`]
   );
@@ -224,9 +212,8 @@ export async function getTrustedFiles(actorName: string) {
 }
 
 export async function getTrustedFileContents(actorName: string): Promise<{ name: string; content: string }[]> {
-  const pool = getPool();
   const normalized = actorName.toLowerCase().replace(/[^a-z0-9]/g, '');
-  const { rows } = await pool.query(
+  const { rows } = await query(
     `SELECT file_name, content FROM trusted_files WHERE REPLACE(LOWER(actor_name), ' ', '') LIKE $1`,
     [`%${normalized}%`]
   );
@@ -234,8 +221,7 @@ export async function getTrustedFileContents(actorName: string): Promise<{ name:
 }
 
 export async function addTrustedFile(actorName: string, fileName: string, fileType: string, content: string, filePath?: string) {
-  const pool = getPool();
-  const { rows } = await pool.query(
+  const { rows } = await query(
     `INSERT INTO trusted_files (actor_name, file_name, file_type, content, file_path)
      VALUES ($1, $2, $3, $4, $5)
      ON CONFLICT (actor_name, file_name) DO UPDATE SET content = $4, file_path = $5
@@ -246,8 +232,7 @@ export async function addTrustedFile(actorName: string, fileName: string, fileTy
 }
 
 export async function removeTrustedFile(id: number) {
-  const pool = getPool();
-  await pool.query('DELETE FROM trusted_files WHERE id = $1', [id]);
+  await query('DELETE FROM trusted_files WHERE id = $1', [id]);
 }
 
 // --- Trusted URL strings for Gemini context ---
@@ -260,9 +245,8 @@ export async function getTrustedUrlStrings(actorName: string): Promise<string[]>
 // --- Get all actor names that have trusted sources ---
 
 export async function getAllTrustedActorNames(): Promise<string[]> {
-  const pool = getPool();
-  const { rows: urlActors } = await pool.query('SELECT DISTINCT actor_name FROM trusted_urls');
-  const { rows: fileActors } = await pool.query('SELECT DISTINCT actor_name FROM trusted_files');
+  const { rows: urlActors } = await query('SELECT DISTINCT actor_name FROM trusted_urls');
+  const { rows: fileActors } = await query('SELECT DISTINCT actor_name FROM trusted_files');
   const allNames = new Set([...urlActors.map(r => r.actor_name), ...fileActors.map(r => r.actor_name)]);
   return Array.from(allNames);
 }

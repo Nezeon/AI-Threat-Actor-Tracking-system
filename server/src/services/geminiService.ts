@@ -8,6 +8,7 @@ import { validateCveBatch } from './nvdService.js';
 import * as db from '../models/db.js';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+const GEMINI_TIMEOUT_MS = 90_000; // 90 seconds per Gemini API call
 
 // ============================================================
 // Helper: Extract grounding metadata URLs from Gemini response
@@ -122,20 +123,41 @@ function assembleVerifiedSources(
 // Helper: Attempt to repair truncated JSON from Gemini
 // ============================================================
 function tryRepairJson(text: string): any {
+  // Strategy 1: Maybe it's already valid
+  try { return JSON.parse(text); } catch { /* continue */ }
+
   let repaired = text.trimEnd();
 
-  // Remove trailing comma before closing brackets
-  repaired = repaired.replace(/,\s*$/, '');
+  // Strategy 2: Remove trailing incomplete key-value pairs
+  // Common pattern: truncation in the middle of a string value
+  // e.g., "title": "MITRE ATT&CK: Lazarus
+  repaired = repaired.replace(/,\s*"[^"]*":\s*"[^"]*$/, '');   // trailing "key": "incomplete_value
+  repaired = repaired.replace(/,\s*"[^"]*":\s*$/, '');           // trailing "key":
+  repaired = repaired.replace(/,\s*"[^"]*$/, '');                // trailing "incomplete_key
+  repaired = repaired.replace(/,\s*$/, '');                       // trailing comma
 
-  // Close unclosed strings
-  const openQuotes = (repaired.match(/"/g) || []).length;
-  if (openQuotes % 2 !== 0) repaired += '"';
+  // Strategy 3: If truncated inside an array of objects (most common for CVEs/sources),
+  // remove the last incomplete object from the array
+  const lastCompleteObject = repaired.lastIndexOf('},');
+  const lastOpenBrace = repaired.lastIndexOf('{');
+  if (lastOpenBrace > lastCompleteObject && lastCompleteObject > 0) {
+    repaired = repaired.substring(0, lastCompleteObject + 1);
+    repaired = repaired.replace(/,\s*$/, '');
+  }
 
-  // Balance brackets and braces
+  // Strategy 4: Close unclosed strings (balanced quote count)
+  const quoteCount = (repaired.match(/(?<!\\)"/g) || []).length;
+  if (quoteCount % 2 !== 0) repaired += '"';
+
+  // Strategy 5: Balance brackets and braces
   const openBrackets = (repaired.match(/\[/g) || []).length - (repaired.match(/\]/g) || []).length;
   const openBraces = (repaired.match(/\{/g) || []).length - (repaired.match(/\}/g) || []).length;
   for (let i = 0; i < openBrackets; i++) repaired += ']';
   for (let i = 0; i < openBraces; i++) repaired += '}';
+
+  // Strategy 6: Remove trailing commas before closing brackets/braces (invalid JSON)
+  repaired = repaired.replace(/,\s*\]/g, ']');
+  repaired = repaired.replace(/,\s*\}/g, '}');
 
   return JSON.parse(repaired);
 }
@@ -311,6 +333,7 @@ OUTPUT FORMAT: Detailed research notes with inline source citations. Be thorough
       maxOutputTokens: 8192,
       temperature: 0,
       systemInstruction: "You are a meticulous threat intelligence researcher. Your job is ONLY to gather facts, not generate structured output. Cite sources for every claim. Never confuse one threat actor with another.",
+      httpOptions: { timeout: GEMINI_TIMEOUT_MS },
     }
   });
 
@@ -406,11 +429,12 @@ STRICT RULES:
   }
 
   try {
-    // Pass 2 with retry: first attempt at 16k tokens, retry at 32k if truncated
+    // Pass 2 with retry: first attempt at 32k tokens, retry at 64k if truncated
     let parsedData: any = null;
     let allGroundedUrls = [...researchGroundedUrls];
+    let lastTruncatedText = '';
 
-    for (const attempt of [{ tokens: 16384, label: '1st' }, { tokens: 32768, label: 'retry' }]) {
+    for (const attempt of [{ tokens: 32768, label: '1st' }, { tokens: 65536, label: 'retry' }]) {
       const structuredResponse = await ai.models.generateContent({
         model,
         contents: structurePrompt,
@@ -420,6 +444,7 @@ STRICT RULES:
           maxOutputTokens: attempt.tokens,
           temperature: 0,
           systemInstruction: SYSTEM_INSTRUCTION,
+          httpOptions: { timeout: GEMINI_TIMEOUT_MS },
         }
       });
 
@@ -435,21 +460,46 @@ STRICT RULES:
         break; // Success — exit retry loop
       } catch (parseError) {
         console.warn(`Pass 2 (${attempt.label}): JSON parse failed, ${attempt.label === 'retry' ? 'attempting repair' : 'retrying with higher token limit'}...`);
+        lastTruncatedText = text;
         if (attempt.label === 'retry') {
-          // Last attempt — try to repair truncated JSON
+          // Last attempt — try to repair truncated JSON mechanically
           try {
             parsedData = tryRepairJson(text);
             console.log('Pass 2: JSON repair succeeded');
             break;
           } catch {
             console.error('Pass 2: JSON repair also failed. Truncated response:', text.substring(text.length - 200));
-            throw parseError;
+            // Fall through to Gemini completion fallback below
           }
         }
       }
     }
 
-    if (!parsedData) throw new Error("Failed to parse structured response after retries");
+    // Fallback: Ask Gemini to complete the truncated JSON
+    if (!parsedData && lastTruncatedText) {
+      console.log('Pass 2 fallback: Asking Gemini to complete truncated JSON...');
+      try {
+        const completionResponse = await ai.models.generateContent({
+          model,
+          contents: `The following JSON was truncated mid-generation. Complete it by closing any open strings, arrays, and objects. Return ONLY valid JSON — do not add new data, just close the structure properly.\n\nTruncated JSON:\n${lastTruncatedText.substring(0, 30000)}`,
+          config: {
+            responseMimeType: "application/json",
+            maxOutputTokens: 8192,
+            temperature: 0,
+            httpOptions: { timeout: GEMINI_TIMEOUT_MS },
+          }
+        });
+        const completedText = completionResponse.text;
+        if (completedText) {
+          parsedData = JSON.parse(completedText);
+          console.log('Pass 2 fallback: Gemini JSON completion succeeded');
+        }
+      } catch (completionError) {
+        console.error('Pass 2 fallback: Gemini JSON completion also failed:', completionError);
+      }
+    }
+
+    if (!parsedData) throw new Error("Failed to parse structured response after all retries and repair attempts");
 
     log.groundingUrls = allGroundedUrls.filter(u => !isEphemeralUrl(u.url));
     addStep('pass2_structure', 'Pass 2: Structure Profile',
@@ -810,6 +860,7 @@ Task: Find ALL CVEs that "${actorName}" has been DIRECTLY observed exploiting.
         responseSchema: schema,
         temperature: 0,
         systemInstruction: SYSTEM_INSTRUCTION,
+        httpOptions: { timeout: GEMINI_TIMEOUT_MS },
       }
     });
 
@@ -952,7 +1003,8 @@ export const chatWithAI = async (message: string, context?: string): Promise<str
       config: {
         tools: [{ googleSearch: {} }],
         systemInstruction,
-        temperature: 0
+        temperature: 0,
+        httpOptions: { timeout: GEMINI_TIMEOUT_MS },
       }
     });
     return response.text || "I couldn't generate a response.";
@@ -998,7 +1050,8 @@ export const getLiveCyberNews = async (): Promise<NewsItem[]> => {
             required: ["title", "summary", "source", "url"]
           }
         },
-        temperature: 0.1
+        temperature: 0.1,
+        httpOptions: { timeout: GEMINI_TIMEOUT_MS },
       }
     });
 

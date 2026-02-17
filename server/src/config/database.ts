@@ -10,6 +10,56 @@ export function getPool(): pg.Pool {
   return pool;
 }
 
+/**
+ * Resilient query wrapper — retries once on connection errors.
+ * Handles Neon free tier suspension (cold-start) gracefully.
+ */
+export async function query(text: string, params?: any[]): Promise<pg.QueryResult> {
+  const p = getPool();
+  try {
+    return await p.query(text, params);
+  } catch (err: any) {
+    const isConnectionError =
+      err.message?.includes('Connection terminated') ||
+      err.message?.includes('connection terminated') ||
+      err.code === 'ECONNRESET' ||
+      err.code === 'ECONNREFUSED' ||
+      err.code === '57P01'; // Neon admin_shutdown
+
+    if (isConnectionError) {
+      console.warn(`DB connection lost (${err.code || err.message}), retrying query...`);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      return await p.query(text, params);
+    }
+    throw err;
+  }
+}
+
+/**
+ * Resilient pool.connect() — retries once on connection errors.
+ * Use this for transactional operations that need a dedicated client.
+ */
+export async function getClient(): Promise<pg.PoolClient> {
+  const p = getPool();
+  try {
+    return await p.connect();
+  } catch (err: any) {
+    const isConnectionError =
+      err.message?.includes('Connection terminated') ||
+      err.message?.includes('connection terminated') ||
+      err.code === 'ECONNRESET' ||
+      err.code === 'ECONNREFUSED' ||
+      err.code === '57P01';
+
+    if (isConnectionError) {
+      console.warn(`DB connect failed (${err.code || err.message}), retrying...`);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      return await p.connect();
+    }
+    throw err;
+  }
+}
+
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS threat_actors (
   id TEXT PRIMARY KEY,
@@ -76,6 +126,15 @@ export async function initializeDatabase(): Promise<void> {
   pool = new Pool({
     connectionString,
     ssl: isProduction ? { rejectUnauthorized: false } : undefined,
+    max: 5,                        // Neon free tier: fewer connections
+    idleTimeoutMillis: 30000,      // Close idle connections after 30s
+    connectionTimeoutMillis: 10000, // Fail fast if connection takes >10s
+  });
+
+  // Handle background pool errors (e.g., Neon suspending idle connections).
+  // Without this, an unhandled 'error' event on the pool can crash the process.
+  pool.on('error', (err) => {
+    console.error('Unexpected database pool error:', err.message);
   });
 
   // Test connection
