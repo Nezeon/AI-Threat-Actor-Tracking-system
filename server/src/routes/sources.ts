@@ -19,6 +19,7 @@ const upload = multer({
 
 const router = Router();
 
+router.get('/', ctrl.getAllActorNames);
 router.get('/:actorName', ctrl.getSourcesForActor);
 router.post('/urls', ctrl.addUrl);
 router.delete('/urls/:id', ctrl.removeUrl);

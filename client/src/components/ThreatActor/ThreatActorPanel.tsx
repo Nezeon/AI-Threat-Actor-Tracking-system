@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { ThreatActor } from '../../types';
+import { ThreatActor, GenerationLog } from '../../types';
 import { INITIAL_THREAT_ACTORS } from '../../constants';
 import { Plus, Search, Shield, Download, AlertTriangle, Activity, Target, Trash2, RefreshCw, ExternalLink, Globe, Link as LinkIcon, CheckCircle, Search as SearchIcon, RotateCw } from 'lucide-react';
 import { generateActorProfile, refreshActorSection, getAllActors, deleteActor as deleteActorApi } from '../../services/apiService';
 import * as XLSX from 'xlsx';
+import GenerationLogPanel from './GenerationLogPanel';
 
 const ThreatActorPanel: React.FC = () => {
   const [actors, setActors] = useState<ThreatActor[]>(() => {
@@ -37,6 +38,8 @@ const ThreatActorPanel: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshingSection, setRefreshingSection] = useState<string | null>(null);
+  const [generationLogs, setGenerationLogs] = useState<Record<string, GenerationLog>>({});
+  const [showLog, setShowLog] = useState(false);
 
   // Fetch actors from backend on mount and sync
   useEffect(() => {
@@ -72,9 +75,11 @@ const ThreatActorPanel: React.FC = () => {
 
     setIsLoading(true);
     try {
-      const newActor = await generateActorProfile(newActorName);
+      const { actor: newActor, generationLog } = await generateActorProfile(newActorName);
       setActors(prev => [...prev, newActor]);
+      setGenerationLogs(prev => ({ ...prev, [newActor.id]: generationLog }));
       setSelectedActorId(newActor.id);
+      setShowLog(true);
       setNewActorName('');
       setIsAdding(false);
     } catch (err) {
@@ -89,8 +94,10 @@ const ThreatActorPanel: React.FC = () => {
 
     setIsRefreshing(true);
     try {
-      const refreshedActor = await generateActorProfile(selectedActor.name);
+      const { actor: refreshedActor, generationLog } = await generateActorProfile(selectedActor.name);
       setActors(prev => prev.map(a => a.id === selectedActor.id ? { ...refreshedActor, id: selectedActor.id } : a));
+      setGenerationLogs(prev => ({ ...prev, [selectedActor.id]: generationLog }));
+      setShowLog(true);
     } catch (err) {
       console.error("Refresh failed", err);
       alert("Failed to refresh profile. Please check your connection.");
@@ -439,6 +446,15 @@ const ThreatActorPanel: React.FC = () => {
                   ))}
                 </div>
               </div>
+            )}
+
+            {/* Generation Log (collapsible) */}
+            {generationLogs[selectedActor.id] && (
+              <GenerationLogPanel
+                log={generationLogs[selectedActor.id]}
+                isOpen={showLog}
+                onToggle={() => setShowLog(prev => !prev)}
+              />
             )}
           </div>
         ) : (

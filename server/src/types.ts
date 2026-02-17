@@ -50,3 +50,19 @@ export interface TrustedFile {
   content: string;
   timestamp?: number;
 }
+
+export interface GenerationLogEntry {
+  step: string;
+  label: string;
+  description: string;
+  durationMs?: number;
+}
+
+export interface GenerationLog {
+  actorName: string;
+  totalDurationMs: number;
+  groundingUrls: { title: string; url: string }[];
+  approvedSources: { title: string; url: string }[];
+  trustedFiles: string[];
+  steps: GenerationLogEntry[];
+}

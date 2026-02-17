@@ -26,8 +26,15 @@ interface MitreActorInfo {
 
 // In-memory cache
 let cachedIntrusions: MitreIntrusion[] | null = null;
+let cachedMalwareNames: Set<string> | null = null;
 let cacheTimestamp = 0;
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+
+// Recent malware families not yet in the MITRE STIX bundle
+const KNOWN_MALWARE_FAMILIES = new Set([
+  'warlock', 'catb', 'horus', 'bestcrypt',
+  'cobaltstrike', 'beacon', 'mimikatz', 'bloodhound', 'rubeus',
+].map(s => s.toLowerCase().replace(/[^a-z0-9]/g, '')));
 
 const MITRE_DATA_URL = 'https://raw.githubusercontent.com/mitre/cti/master/enterprise-attack/enterprise-attack.json';
 
@@ -52,8 +59,22 @@ async function fetchMitreData(): Promise<MitreIntrusion[]> {
       (obj: any) => obj.type === 'intrusion-set' && !obj.revoked
     ) as MitreIntrusion[];
 
+    // Extract malware + tool names for alias rejection
+    const malwareAndTools = bundle.objects.filter(
+      (obj: any) => (obj.type === 'malware' || obj.type === 'tool') && !obj.revoked
+    );
+    cachedMalwareNames = new Set<string>();
+    for (const obj of malwareAndTools) {
+      cachedMalwareNames.add(normalize(obj.name));
+      if (obj.x_mitre_aliases) {
+        for (const alias of obj.x_mitre_aliases) {
+          cachedMalwareNames.add(normalize(alias));
+        }
+      }
+    }
+
     cacheTimestamp = Date.now();
-    console.log(`Cached ${cachedIntrusions.length} MITRE intrusion sets`);
+    console.log(`Cached ${cachedIntrusions.length} MITRE intrusion sets, ${cachedMalwareNames.size} malware/tool names`);
     return cachedIntrusions;
   } catch (error) {
     console.error('Failed to fetch MITRE data:', error);
@@ -66,7 +87,7 @@ async function fetchMitreData(): Promise<MitreIntrusion[]> {
 /**
  * Normalize a string for fuzzy matching.
  */
-function normalize(str: string): string {
+export function normalize(str: string): string {
   return str.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
@@ -136,4 +157,32 @@ export async function getMitreActorInfo(actorName: string): Promise<MitreActorIn
 export async function getMitreAliases(actorName: string): Promise<string[]> {
   const info = await getMitreActorInfo(actorName);
   return info?.aliases || [];
+}
+
+/**
+ * Check if a name is a known malware family or tool (not a threat actor alias).
+ * Uses MITRE STIX malware/tool objects + hardcoded recent families.
+ */
+export async function isMitreMalwareOrTool(name: string): Promise<boolean> {
+  await fetchMitreData(); // Ensure cache is populated
+  const normalized = normalize(name);
+  return (cachedMalwareNames?.has(normalized) || false) || KNOWN_MALWARE_FAMILIES.has(normalized);
+}
+
+/**
+ * Build a complete map of normalized alias → MITRE actor name.
+ * Used for bulk alias cross-validation to detect misattributed aliases.
+ */
+export async function getAllMitreAliasMap(): Promise<Map<string, string>> {
+  const intrusions = await fetchMitreData();
+  const map = new Map<string, string>();
+
+  for (const intrusion of intrusions) {
+    const allNames = [intrusion.name, ...(intrusion.aliases || [])];
+    for (const name of allNames) {
+      map.set(normalize(name), intrusion.name);
+    }
+  }
+
+  return map;
 }

@@ -30,16 +30,24 @@ export const generateActor = async (req: Request, res: Response, next: NextFunct
     const trustedUrls = await dbModel.getTrustedUrlStrings(name);
     const trustedFiles = await dbModel.getTrustedFileContents(name);
 
-    const profile = await geminiService.generateActorProfile(name, trustedUrls, trustedFiles);
+    const { profile, log } = await geminiService.generateActorProfile(name, trustedUrls, trustedFiles);
+
+    // Check if actor already exists by name — update instead of creating duplicate
+    const existing = await dbModel.getActorByName(name);
 
     const actor = {
-      id: Date.now().toString(),
+      id: existing ? existing.id : Date.now().toString(),
       ...profile,
       lastUpdated: new Date().toISOString()
     };
 
-    await dbModel.createActor(actor);
-    res.json(actor);
+    if (existing) {
+      await dbModel.updateActor(existing.id, actor);
+    } else {
+      await dbModel.createActor(actor);
+    }
+
+    res.json({ actor, generationLog: log });
   } catch (error) {
     next(error);
   }

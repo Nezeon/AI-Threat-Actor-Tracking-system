@@ -1,4 +1,4 @@
-import { ThreatActor, NewsItem } from '../types';
+import { ThreatActor, NewsItem, GenerationLog } from '../types';
 
 const API_BASE = '/api';
 
@@ -29,8 +29,13 @@ export const getActor = async (id: string): Promise<ThreatActor> => {
   return apiRequest<ThreatActor>(`/actors/${id}`);
 };
 
-export const generateActorProfile = async (actorName: string): Promise<ThreatActor> => {
-  return apiRequest<ThreatActor>('/actors/generate', {
+export interface GenerateProfileResponse {
+  actor: ThreatActor;
+  generationLog: GenerationLog;
+}
+
+export const generateActorProfile = async (actorName: string): Promise<GenerateProfileResponse> => {
+  return apiRequest<GenerateProfileResponse>('/actors/generate', {
     method: 'POST',
     body: JSON.stringify({ name: actorName }),
   });
@@ -75,6 +80,10 @@ export const getLiveCyberNews = async (): Promise<NewsItem[]> => {
 };
 
 // --- Trusted Sources APIs ---
+
+export const getTrustedActorNames = async (): Promise<string[]> => {
+  return apiRequest<string[]>('/sources');
+};
 
 export interface TrustedSourcesResponse {
   urls: { id: number; url: string; actor_name: string }[];

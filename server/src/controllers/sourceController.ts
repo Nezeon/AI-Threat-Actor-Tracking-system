@@ -31,6 +31,15 @@ function parseSpreadsheet(filePath: string): string {
   return XLSX.utils.sheet_to_csv(worksheet);
 }
 
+export const getAllActorNames = async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const names = await dbModel.getAllTrustedActorNames();
+    res.json(names);
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getSourcesForActor = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const actorName = decodeURIComponent(req.params.actorName as string);

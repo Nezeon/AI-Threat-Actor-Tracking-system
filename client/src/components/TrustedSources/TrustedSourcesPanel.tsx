@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Globe, ShieldCheck, Search, Save, FileText, Upload, AlertCircle } from 'lucide-react';
-import { getTrustedSources, addTrustedUrl, removeTrustedUrl, uploadTrustedFile, removeTrustedFile, TrustedSourcesResponse } from '../../services/apiService';
+import { getTrustedSources, getTrustedActorNames, addTrustedUrl, removeTrustedUrl, uploadTrustedFile, removeTrustedFile, TrustedSourcesResponse } from '../../services/apiService';
 
 const TrustedSourcesPanel: React.FC = () => {
   const [selectedActor, setSelectedActor] = useState<string>('');
@@ -14,18 +14,15 @@ const TrustedSourcesPanel: React.FC = () => {
   const [files, setFiles] = useState<{ id: number; file_name: string; file_type: string; content_length: number; created_at: string }[]>([]);
   const [allActors, setAllActors] = useState<string[]>([]);
 
-  // Track all known actors (from URL list visible on sidebar)
-  const [knownActors, setKnownActors] = useState<string[]>(() => {
-    try {
-      const savedSources = localStorage.getItem('hivepro_trusted_sources');
-      const savedFiles = localStorage.getItem('hivepro_trusted_files');
-      const sourceActors = savedSources ? Object.keys(JSON.parse(savedSources)) : [];
-      const fileActors = savedFiles ? Object.keys(JSON.parse(savedFiles)) : [];
-      return Array.from(new Set([...sourceActors, ...fileActors]));
-    } catch {
-      return [];
-    }
-  });
+  // Track all known actors (fetched from server)
+  const [knownActors, setKnownActors] = useState<string[]>([]);
+
+  // Fetch actor names that have trusted sources on mount
+  useEffect(() => {
+    getTrustedActorNames()
+      .then(names => setKnownActors(names))
+      .catch(err => console.warn("Could not fetch trusted actor names:", err.message));
+  }, []);
 
   // Fetch sources when actor is selected
   useEffect(() => {

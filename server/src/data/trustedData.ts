@@ -4,6 +4,7 @@ import { ThreatActor } from '../types.js';
 export interface TrustedActorData {
   first_seen?: string;
   aliases?: string[];
+  forbiddenAliases?: string[];  // Aliases that must be REMOVED (parent groups, misattributed names)
   cves: { id: string; description?: string; severity?: string; verificationReference: string }[];
   sources?: { title: string; url: string }[];
 }
@@ -137,6 +138,61 @@ export const TRUSTED_THREAT_DATA: Record<string, TrustedActorData> = {
     sources: [
       { title: "MITRE ATT&CK - APT28", url: "https://attack.mitre.org/groups/G0007/" },
       { title: "Malpedia - APT28", url: "https://malpedia.caad.fkie.fraunhofer.de/actor/sofacy" }
+    ]
+  },
+  "static tundra": {
+    first_seen: "2010",
+    aliases: [
+      "Dragonfly", "Dragonfly 2.0", "Energetic Bear", "Berserk Bear",
+      "Crouching Yeti", "Ghost Blizzard", "BROMINE", "IRON LIBERTY",
+      "DYMALLOY", "TEMP.Isotope", "Group 24", "TG-4192", "Koala",
+      "Havex", "ALLANITE"
+    ],
+    cves: [
+      {
+        id: "CVE-2018-0171",
+        description: "Cisco Smart Install Remote Code Execution — exploited by Static Tundra/Dragonfly for network device compromise, documented by FBI and Cisco Talos (Aug 2025)",
+        severity: "CRITICAL",
+        verificationReference: "https://nvd.nist.gov/vuln/detail/CVE-2018-0171"
+      }
+    ],
+    sources: [
+      { title: "Cisco Talos - Static Tundra", url: "https://blog.talosintelligence.com/static-tundra/" },
+      { title: "MITRE ATT&CK - Dragonfly (G0035)", url: "https://attack.mitre.org/groups/G0035/" },
+      { title: "Malpedia - Energetic Bear", url: "https://malpedia.caad.fkie.fraunhofer.de/actor/energetic_bear" },
+      { title: "NVD - CVE-2018-0171", url: "https://nvd.nist.gov/vuln/detail/CVE-2018-0171" }
+    ]
+  },
+  "shadypanda": {
+    first_seen: "2018",
+    aliases: [
+      "nuggetsno15", "rocket Zhang", "Starlab Technology"
+    ],
+    forbiddenAliases: ["DarkSpectre", "Dark Spectre"],  // Parent operation — ShadyPanda is a campaign WITHIN DarkSpectre
+    cves: [],
+    sources: [
+      { title: "Koi Security - ShadyPanda Campaign Analysis", url: "https://www.koi.ai/blog/4-million-browsers-infected-inside-shadypanda-7-year-malware-campaign" },
+      { title: "Koi Security - DarkSpectre Threat Actor", url: "https://www.koi.ai/blog/darkspectre-unmasking-the-threat-actor-behind-7-8-million-infected-browsers" },
+      { title: "Malpedia - ShadyPanda", url: "https://malpedia.caad.fkie.fraunhofer.de/actor/shadypanda" },
+      { title: "The Hacker News - ShadyPanda", url: "https://thehackernews.com/2025/12/shadypanda-turns-popular-browser.html" }
+    ]
+  },
+  "earth baxia": {
+    first_seen: "2024",
+    aliases: [],
+    cves: [
+      {
+        id: "CVE-2024-36401",
+        description: "GeoServer GeoTools RCE — exploited by Earth Baxia to deploy EAGLEDOOR backdoor and execute arbitrary commands",
+        severity: "CRITICAL",
+        verificationReference: "https://www.trendmicro.com/en_us/research/24/i/earth-baxia-spear-phishing-and-geoserver-exploit.html"
+      }
+    ],
+    sources: [
+      { title: "Trend Micro - Earth Baxia Spear-Phishing and GeoServer Exploit", url: "https://www.trendmicro.com/en_us/research/24/i/earth-baxia-spear-phishing-and-geoserver-exploit.html" },
+      { title: "Malpedia - Earth Baxia", url: "https://malpedia.caad.fkie.fraunhofer.de/actor/earth_baxia" },
+      { title: "Dark Reading - Earth Baxia", url: "https://www.darkreading.com/cyberattacks-data-breaches/china-earth-baxia-spies-exploit-geoserver-target-apac-orgs" },
+      { title: "The Hacker News - GeoServer EAGLEDOOR", url: "https://thehackernews.com/2024/09/chinese-hackers-exploit-geoserver-flaw.html" }
     ]
   },
   "sandworm": {

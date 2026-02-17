@@ -54,6 +54,34 @@ export async function getActorById(id: string): Promise<ThreatActor | null> {
   };
 }
 
+export async function getActorByName(name: string): Promise<ThreatActor | null> {
+  const pool = getPool();
+  const { rows } = await pool.query(
+    'SELECT * FROM threat_actors WHERE LOWER(name) = LOWER($1) LIMIT 1',
+    [name]
+  );
+  if (rows.length === 0) return null;
+
+  const actor = rows[0];
+  const cves = await getCvesForActor(actor.id);
+  const sources = await getSourcesForActor(actor.id);
+
+  return {
+    id: actor.id,
+    name: actor.name,
+    first_seen: actor.first_seen || '',
+    aliases: actor.aliases,
+    description: {
+      summary: actor.description_summary,
+      campaigns: actor.description_campaigns,
+      recent: actor.description_recent,
+    },
+    cves,
+    sources,
+    lastUpdated: actor.last_updated,
+  };
+}
+
 export async function createActor(actor: ThreatActor): Promise<ThreatActor> {
   const pool = getPool();
   const client = await pool.connect();
