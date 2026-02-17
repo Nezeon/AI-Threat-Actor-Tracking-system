@@ -71,7 +71,12 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 export async function initializeDatabase(): Promise<void> {
   const connectionString = process.env.DATABASE_URL || 'postgresql://localhost:5432/threatintel';
 
-  pool = new Pool({ connectionString });
+  // Neon and most cloud PostgreSQL providers require SSL
+  const isProduction = process.env.NODE_ENV === 'production';
+  pool = new Pool({
+    connectionString,
+    ssl: isProduction ? { rejectUnauthorized: false } : undefined,
+  });
 
   // Test connection
   try {
